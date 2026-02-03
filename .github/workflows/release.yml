@@ -1,0 +1,118 @@
+# 推送 tag (如 v1.0.0) 时自动构建并创建 GitHub Release
+# 产物: Android APK; Windows zip / Inno Setup 安装包
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.9'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  build-windows:
+    name: Build Windows (zip, Inno Setup)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.9'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows (Release)
+        run: flutter build windows --release
+
+      - name: Prepare output directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force release-artifacts | Out-Null
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zipName = "release-artifacts\photo_refractor-windows-$tag.zip"
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath $zipName
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Compile Inno Setup installer
+        shell: pwsh
+        run: |
+          $releaseDir = (Resolve-Path "build\windows\x64\runner\Release").Path
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DReleaseDir="$releaseDir" windows\installer.iss
+          Copy-Item "windows\Output\photo_refractor_Setup.exe" release-artifacts\
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-builds
+          path: |
+            release-artifacts/*.zip
+            release-artifacts/*.exe
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-apk, build-windows]
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: android-apk
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-builds
+          path: windows-builds
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            android-apk/**/*.apk
+            windows-builds/**/*.zip
+            windows-builds/**/*.exe
