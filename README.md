@@ -6,6 +6,14 @@
 
 ![App Preview](docs/app-preview.png)
 
+## 下载安装包
+
+在 [Releases](https://github.com/jingkeling/photo_refractor/releases) 可下载：
+
+- **APK**（Android）
+- **Windows 便携版**（zip）
+- **Windows 安装程序**（exe）
+
 ## 环境要求
 
 - Flutter SDK ^3.10.8
